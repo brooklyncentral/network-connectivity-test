@@ -1,0 +1,48 @@
+brooklyn.catalog:
+  version: "1.0.0-SNAPSHOT" # AMP_NODE_VERSION
+  items:
+  - "https://raw.githubusercontent.com/brooklyncentral/common-catalog-utils/master/common-tests/src/main/resources/commontests/common.tests.bom"  
+  - id: nc-test
+    itemType: template
+    name: Test Network Connectivity
+    brooklyn.parameters:
+    - name: port
+      type: string
+      default: 8143      
+    item:
+      services:
+      - type: org.apache.brooklyn.entity.software.base.VanillaSoftwareProcess
+        id: host-nc
+        name: Host nc   
+        brooklyn.config:
+          install.command: sudo yum install -y nc
+          checkRunning.command: ps
+          launch.command: 
+            $brooklyn:formatString:
+            - "nohup echo -n | nc -lk %s > output.txt 2> err.txt &"          
+            - $brooklyn:config("port")
+      - type: org.apache.brooklyn.entity.software.base.VanillaSoftwareProcess
+        id: client-nc
+        name: Client nc    
+        brooklyn.config:
+          install.command: sudo yum install -y nc
+          launch.command: ps
+          checkRunning.command: ps
+        brooklyn.initializers:
+        - type: org.apache.brooklyn.core.sensor.ssh.SshCommandSensor
+          brooklyn.config:
+            name: Last NC Result
+            period: 30s
+            shell.env:
+               PORT: $brooklyn:config("port")
+               HOST_SUBNET_ADDRESS: $brooklyn:entity("host-nc").attributeWhenReady("host.subnet.address")  
+            command: |
+                 date | nc $HOST_SUBNET_ADDRESS $PORT > output.txt 2> err.txt
+                 if [ -s err.txt ]; then
+                  echo $(date): $(cat err.txt) >> log.txt
+                  echo Failing
+                 else
+                  echo $(date): Success >> log.txt
+                  echo Passing
+                 fi
+              
